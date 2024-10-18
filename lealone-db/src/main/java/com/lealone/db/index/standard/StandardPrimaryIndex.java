@@ -67,7 +67,7 @@ public class StandardPrimaryIndex extends StandardIndex {
         for (int i = 0; i < columns.length; i++) {
             sortTypes[i] = SortOrder.ASCENDING;
         }
-        ValueDataType keyType = new ValueDataType(null, null, null);
+        PrimaryKeyType keyType = new PrimaryKeyType();
         VersionedValueType vvType = new VersionedValueType(database, database.getCompareMode(),
                 sortTypes, columns.length, table.getEnumColumns());
 
@@ -186,17 +186,19 @@ public class StandardPrimaryIndex extends StandardIndex {
         if (checkDuplicateKey) {
             Value key = ValueLong.get(row.getKey());
             map.addIfAbsent(key, value).onComplete(ar -> {
-                if (ar.isFailed()) {
-                    String sql = "PRIMARY KEY ON " + table.getSQL();
-                    if (mainIndexColumn >= 0 && mainIndexColumn < indexColumns.length) {
-                        sql += "(" + indexColumns[mainIndexColumn].getSQL() + ")";
+                if (ar.isSucceeded()) {
+                    if (ar.getResult().intValue() == Transaction.OPERATION_DATA_DUPLICATE) {
+                        String sql = "PRIMARY KEY ON " + table.getSQL();
+                        if (mainIndexColumn >= 0 && mainIndexColumn < indexColumns.length) {
+                            sql += "(" + indexColumns[mainIndexColumn].getSQL() + ")";
+                        }
+                        DbException e = DbException.get(ErrorCode.DUPLICATE_KEY_1, sql);
+                        ac.setAsyncResult(e);
+                        return;
                     }
-                    DbException e = DbException.get(ErrorCode.DUPLICATE_KEY_1, sql);
-                    ac.setAsyncResult(e);
-                } else {
                     session.setLastIdentity(key);
-                    ac.setAsyncResult(ar);
                 }
+                ac.setAsyncResult(ar);
             });
         } else {
             map.append(value, ar -> {
